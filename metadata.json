@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Taskbuddy Assistant",
+  "description": "An AI chat assistant powered by Gemini that helps you track your goals. Features an integrated dashboard to manage tasks, a built-in calendar to visualize deadlines, and personalized interactions.",
+  "requestFramePermissions": [
+    "geolocation",
+    "microphone"
+  ]
+}
