@@ -341,7 +341,6 @@ const App: React.FC = () => {
 
 **General Behavior:**
 - Be proactive. Do not ask for confirmation unless a request is highly ambiguous.
-- All date/time calculations must use the user's timezone: ${userTimezone}.
 - When creating a task with a due date that also implies a reminder (e.g., "remind me to..."), you should create the task using \`createTask\` and also schedule an initial reminder using \`scheduleReminder\` in the same response.`;
 
       const newChat = ai.chats.create({
@@ -768,7 +767,7 @@ const App: React.FC = () => {
           taskContext = `\n\n(System note: The user currently has no tasks.)`;
       }
 
-      const augmentedMessage = `(System note: Current time is ${new Date().toISOString()}. Use this for all time calculations.)${taskContext}\n\n${userMessageText}`;
+      const augmentedMessage = `(System note: The current UTC time is ${new Date().toISOString()}. The user is in the '${userTimezone}' timezone. All relative time references like 'today', 'tomorrow', or '5pm' MUST be resolved relative to the user's local time, not UTC.)${taskContext}\n\n${userMessageText}`;
       const stream = await chat.sendMessageStream({ message: augmentedMessage });
       
       let aiResponseText = '';
