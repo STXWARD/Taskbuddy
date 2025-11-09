@@ -80,10 +80,65 @@ const createTaskFunctionDeclaration: FunctionDeclaration = {
         type: Type.STRING,
         description: "The priority of the task: 'high', 'medium', or 'low'. Infer if not specified.",
       },
+      category: {
+        type: Type.STRING,
+        description: "A category or tag for the task, like 'Work', 'Personal', 'Study'. Infer this from the task text if possible.",
+      },
+      type: {
+        type: Type.STRING,
+        description: "The type of task: 'Appointment', 'Meeting', 'Assignment', or 'Other'. Infer from the task text.",
+      },
+      customNotificationTime: {
+        type: Type.STRING,
+        description: "A specific notification time in RFC3339 format, if the user explicitly requests one (e.g., 'notify me at 3pm').",
+      }
     },
     required: ['text'],
   },
 };
+
+const updateTaskFunctionDeclaration: FunctionDeclaration = {
+    name: 'updateTask',
+    description: "Updates an existing task's properties, such as its name, due date, priority, or status. Use this when the user asks to change, modify, or update an existing task. You MUST identify the task's unique 'taskId' from the provided task list.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        taskId: {
+          type: Type.STRING,
+          description: "The unique ID of the task to be updated. This ID must be sourced from the list of recent tasks provided in the system context.",
+        },
+        newName: {
+          type: Type.STRING,
+          description: "The new name or text for the task.",
+        },
+        newDueDate: {
+          type: Type.STRING,
+          description: "The new due date and time in RFC3339 format (e.g., '2024-07-21T19:00:00Z').",
+        },
+        newPriority: {
+          type: Type.STRING,
+          description: "The new priority for the task: 'high', 'medium', or 'low'.",
+        },
+        newStatus: {
+          type: Type.STRING,
+          description: "The new status of the task. Can be 'completed' or 'pending'.",
+        },
+         newCategory: {
+          type: Type.STRING,
+          description: "The new category for the task (e.g., 'Work', 'Personal').",
+        },
+        newType: {
+            type: Type.STRING,
+            description: "The new type for the task: 'Appointment', 'Meeting', 'Assignment', or 'Other'.",
+        },
+        newCustomNotificationTime: {
+            type: Type.STRING,
+            description: "The new custom notification time in RFC3339 format.",
+        },
+      },
+      required: ['taskId'],
+    },
+  };
 
 const scheduleReminderFunctionDeclaration: FunctionDeclaration = {
     name: 'scheduleReminder',
@@ -118,6 +173,26 @@ const deleteTaskFunctionDeclaration: FunctionDeclaration = {
       required: ['taskId'],
     },
   };
+
+const analyzeProductivityPatternsFunctionDeclaration: FunctionDeclaration = {
+    name: 'analyzeProductivityPatterns',
+    description: "Analyzes the user's past task activity to identify patterns and provide suggestions for improving productivity. Use this when the user asks for insights, analysis, advice, or a report about their work habits or patterns.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {},
+      required: [],
+    },
+};
+
+const generateNotificationScheduleFunctionDeclaration: FunctionDeclaration = {
+    name: 'generateNotificationSchedule',
+    description: "Generates a notification schedule in JSON format for all pending tasks based on their type, priority, and deadline. Use this when the user asks for a notification plan or schedule.",
+    parameters: {
+        type: Type.OBJECT,
+        properties: {},
+        required: [],
+    },
+};
 
 type View = 'chat' | 'calendar' | 'goals';
 
@@ -249,11 +324,18 @@ const App: React.FC = () => {
 
 **Core Functions & Rules:**
 - **Task Creation (\`createTask\`):** You MUST use this tool to create a **new** task, goal, or event. For example: "add 'buy groceries' to my list".
+- **Task Update (\`updateTask\`):** When the user asks to *update, change, or modify a task*, you MUST use this tool.
+  - Identify the task and apply the requested change (name, date, time, priority, status, or category).
+  - If the task cannot be found, respond politely.
 - **Scheduling Reminders (\`scheduleReminder\`):** You MUST use this tool when the user asks for a reminder for an **existing** task. For example: "remind me about my project report 10 minutes before it's due". Do NOT create a duplicate task. You MUST identify the correct 'taskId' from the task list provided.
 - **Task Deletion (\`deleteTask\`):** You MUST use this tool to delete a task. Identify the correct 'taskId' from the provided task list.
+- **Productivity Analysis (\`analyzeProductivityPatterns\`):** You MUST use this tool when the user asks for insights, analysis, a report, or advice about their productivity, habits, or patterns. Do NOT try to answer these questions with a simple text response.
+- **Notification Generation (\`generateNotificationSchedule\`):** You MUST use this tool when the user asks for a notification plan or schedule. You MUST return the JSON output from the tool as a direct text response formatted inside a markdown code block. The JSON must be standardized: all date/time values must use ISO 8601 format (YYYY-MM-DDTHH:MM:SS) and priority values must be capitalized (e.g., 'High').
 - **Handling Lists:** If the user provides a list of new tasks, you MUST make a separate, parallel 'createTask' function call for EACH item.
-- **Task Summarization:** When asked for a summary of tasks, you MUST provide a clear, structured list **as a direct text response**.
-  - Clearly separate the list into "Pending" and "Completed" sections.
+- **Task Summarization:** When asked for a summary, you MUST provide a clear, structured list **as a direct text response**.
+  - Show both "Pending" and "Completed" tasks in separate sections.
+  - Within each section, you MUST sort the tasks by priority (High -> Medium -> Low).
+  - Include the task name, priority, and deadline if available for each task.
   - Use the full task list from the system note to get this information.
   - Do NOT use any tools for summarization.
 
@@ -265,10 +347,8 @@ const App: React.FC = () => {
       const newChat = ai.chats.create({
         model: 'gemini-2.5-flash',
         config: {
-          // Fix: Wrap the system instruction string in a Content object ({ parts: [{ text: ... }] }).
-          // This provides a more robust structure for the API, especially for complex instructions with tools, and resolves underlying parsing errors.
           systemInstruction: { parts: [{ text: systemInstruction }] },
-          tools: [{ functionDeclarations: [createTaskFunctionDeclaration, scheduleReminderFunctionDeclaration, deleteTaskFunctionDeclaration] }],
+          tools: [{ functionDeclarations: [createTaskFunctionDeclaration, updateTaskFunctionDeclaration, scheduleReminderFunctionDeclaration, deleteTaskFunctionDeclaration, analyzeProductivityPatternsFunctionDeclaration, generateNotificationScheduleFunctionDeclaration] }],
         },
       });
       setChat(newChat);
@@ -348,7 +428,7 @@ const App: React.FC = () => {
     );
   };
 
-  const handleCreateTask = async (args: { text: string; dueDate?: string; priority?: 'high' | 'medium' | 'low' }) => {
+  const handleCreateTask = async (args: { text: string; dueDate?: string; priority?: 'high' | 'medium' | 'low'; category?: string; type?: 'Appointment' | 'Meeting' | 'Assignment' | 'Other'; customNotificationTime?: string; }) => {
     if (!userName) return;
     
     const newTask: Task = {
@@ -359,10 +439,92 @@ const App: React.FC = () => {
       priority: args.priority || 'medium',
       userName: userName,
       reminders: [],
+      createdAt: new Date().toISOString(),
+      category: args.category,
+      type: args.type || 'Other',
+      customNotificationTime: args.customNotificationTime,
     };
 
     setTasks(prev => [...prev, newTask]);
     await addTask(newTask);
+  };
+
+  const handleUpdateTask = async (args: {
+    taskId: string;
+    newName?: string;
+    newDueDate?: string;
+    newPriority?: 'high' | 'medium' | 'low';
+    newStatus?: 'completed' | 'pending';
+    newCategory?: string;
+    newType?: 'Appointment' | 'Meeting' | 'Assignment' | 'Other';
+    newCustomNotificationTime?: string;
+  }) => {
+    const { taskId, ...updates } = args;
+    const taskToUpdate = tasks.find(t => t.id === taskId);
+
+    if (!taskToUpdate) {
+        return `I could not find the specified task. Please check the name and try again.`;
+    }
+
+    const updatedTask: Task = { ...taskToUpdate };
+    const oldName = taskToUpdate.text;
+    let changeDescriptions: string[] = [];
+
+    if (updates.newName && updates.newName !== taskToUpdate.text) {
+        updatedTask.text = updates.newName;
+        changeDescriptions.push(`Task '${oldName}' has been renamed to '${updates.newName}'.`);
+    }
+    if (updates.newDueDate && updates.newDueDate !== taskToUpdate.dueDate) {
+        updatedTask.dueDate = updates.newDueDate;
+        const friendlyDate = new Date(updates.newDueDate).toLocaleString([], {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+        });
+        changeDescriptions.push(`Deadline for '${updatedTask.text}' has been changed to ${friendlyDate}.`);
+    }
+    if (updates.newPriority && updates.newPriority !== taskToUpdate.priority) {
+        updatedTask.priority = updates.newPriority;
+        changeDescriptions.push(`Priority for '${updatedTask.text}' has been changed to ${updates.newPriority}.`);
+    }
+    if (updates.newCategory && updates.newCategory !== taskToUpdate.category) {
+        updatedTask.category = updates.newCategory;
+        changeDescriptions.push(`Category for '${updatedTask.text}' has been changed to ${updates.newCategory}.`);
+    }
+    if (updates.newType && updates.newType !== taskToUpdate.type) {
+        updatedTask.type = updates.newType;
+        changeDescriptions.push(`Type for '${updatedTask.text}' has been changed to ${updates.newType}.`);
+    }
+    if ('newCustomNotificationTime' in updates) { 
+        updatedTask.customNotificationTime = updates.newCustomNotificationTime;
+        changeDescriptions.push(updates.newCustomNotificationTime 
+            ? `Custom notification for '${updatedTask.text}' has been set to ${new Date(updates.newCustomNotificationTime).toLocaleString()}.`
+            : `Custom notification for '${updatedTask.text}' has been removed.`);
+    }
+    if (updates.newStatus) {
+        const isCompleted = updates.newStatus === 'completed';
+        if (isCompleted !== taskToUpdate.isCompleted) {
+            updatedTask.isCompleted = isCompleted;
+            updatedTask.completedAt = isCompleted ? new Date().toISOString() : undefined;
+            changeDescriptions.push(`Status for '${updatedTask.text}' has been updated to ${updates.newStatus}.`);
+        }
+    }
+    
+    if (changeDescriptions.length === 0) {
+      return `No changes were needed for the task "${taskToUpdate.text}".`;
+    }
+
+    setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? updatedTask : t));
+    await updateTask(updatedTask);
+
+    // If a date change was part of the update, return a simple, friendly confirmation.
+    if (updates.newDueDate) {
+      return changeDescriptions.join(' ');
+    }
+    
+    // For other changes, keep the detailed response.
+    const taskDetails = `\n**Task Details:** Name: ${updatedTask.text}, Status: ${updatedTask.isCompleted ? 'Completed' : 'Pending'}, Priority: ${updatedTask.priority}${updatedTask.dueDate ? `, Deadline: ${new Date(updatedTask.dueDate).toLocaleString()}` : ''}`;
+    
+    return `${changeDescriptions.join(' ')}${taskDetails}`;
   };
 
   const handleScheduleReminder = async (args: { taskId: string, reminderTime: string }) => {
@@ -395,12 +557,184 @@ const App: React.FC = () => {
     return taskToDelete.text;
   };
 
+  const handleAnalyzeProductivityPatterns = async (): Promise<string> => {
+    if (tasks.length < 5) {
+      return "I need a bit more history to analyze your productivity. Keep using TaskBuddy to manage at least 5 tasks, and I'll be able to provide insights soon!";
+    }
+  
+    setIsLoading(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      
+      const analysisData = tasks.map(t => ({
+        name: t.text,
+        status: t.isCompleted ? 'Completed' : 'Pending',
+        priority: t.priority,
+        deadline: t.dueDate,
+        createdAt: t.createdAt,
+        completedAt: t.completedAt,
+        category: t.category,
+        timeTakenMs: (t.createdAt && t.completedAt) ? new Date(t.completedAt).getTime() - new Date(t.createdAt).getTime() : undefined,
+      }));
+      
+      const userPrompt = `Here is the user's task history in JSON format. Please analyze it according to the system instructions and return your analysis in the specified JSON schema.\n\n${JSON.stringify(analysisData, null, 2)}`;
+      
+      const schema = {
+        type: Type.OBJECT,
+        properties: {
+          patterns: {
+            type: Type.OBJECT,
+            properties: {
+              productive_hours: { type: Type.ARRAY, description: "Time ranges (e.g., '09:00-11:00') when the user completes most tasks.", items: { type: Type.STRING } },
+              frequent_task_types: { type: Type.ARRAY, description: "Common categories or types of tasks the user creates.", items: { type: Type.STRING } },
+              tasks_often_delayed: { type: Type.ARRAY, description: "Names of tasks that are often postponed or completed long after creation.", items: { type: Type.STRING } },
+            },
+          },
+          suggestions: {
+            type: Type.ARRAY,
+            description: "Actionable recommendations for the user.",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                task: { type: Type.STRING, description: "The subject of the suggestion (e.g., a specific task name or a general habit)." },
+                suggestion: { type: Type.STRING, description: "The specific advice for the user." },
+              },
+            },
+          },
+        },
+      };
+  
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: userPrompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: schema,
+            systemInstruction: "You are an intelligent productivity assistant. Your goal is to analyze a user's task history to identify patterns and provide actionable suggestions. Analyze the provided task data and return your findings strictly in the requested JSON format."
+        },
+      });
+  
+      const resultJson = JSON.parse(response.text);
+      let formattedResponse = "✨ **Productivity Analysis** ✨\n\nI've analyzed your recent activity. Here's what I found:\n\n";
+
+      if (resultJson.patterns) {
+          formattedResponse += "**Patterns & Habits:**\n";
+          if (resultJson.patterns.productive_hours?.length > 0) {
+              formattedResponse += `- **Most Productive Hours:** ${resultJson.patterns.productive_hours.join(', ')}\n`;
+          }
+          if (resultJson.patterns.frequent_task_types?.length > 0) {
+              formattedResponse += `- **Common Task Types:** ${resultJson.patterns.frequent_task_types.join(', ')}\n`;
+          }
+          if (resultJson.patterns.tasks_often_delayed?.length > 0) {
+              formattedResponse += `- **Tasks Often Delayed:** ${resultJson.patterns.tasks_often_delayed.join(', ')}\n`;
+          }
+          formattedResponse += "\n";
+      }
+
+      if (resultJson.suggestions?.length > 0) {
+          formattedResponse += "**Suggestions for you:**\n";
+          resultJson.suggestions.forEach((s: { task: string, suggestion: string }) => {
+              formattedResponse += `- **${s.task}:** ${s.suggestion}\n`;
+          });
+      }
+
+      return formattedResponse;
+    } catch (e) {
+      console.error("Failed to analyze productivity:", e);
+      const rawErrorMessage = e instanceof Error ? e.message : String(e);
+      if (rawErrorMessage.includes('429') || rawErrorMessage.includes('RESOURCE_EXHAUSTED')) {
+        return "I couldn't analyze your productivity because the API request limit was exceeded. Please [check your billing details](https://ai.google.dev/gemini-api/docs/billing) or try again later.";
+      }
+      return "I tried to analyze your productivity, but something went wrong while processing the results. Please try again later.";
+    } finally {
+        setIsLoading(false);
+    }
+  };
+
+  const handleGenerateNotificationSchedule = async (): Promise<string> => {
+    const pendingTasks = tasks.filter(t => !t.isCompleted && t.dueDate);
+    const schedule: any[] = [];
+    const now = new Date();
+
+    const subtractTime = (date: Date, hours: number, minutes: number = 0) => {
+        const newDate = new Date(date);
+        newDate.setHours(newDate.getHours() - hours);
+        newDate.setMinutes(newDate.getMinutes() - minutes);
+        return newDate;
+    };
+
+    const formatToLocalISO = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+    };
+    
+    pendingTasks.forEach(task => {
+        const deadline = new Date(task.dueDate!);
+        const deadlineTime = `${String(deadline.getHours()).padStart(2, '0')}:${String(deadline.getMinutes()).padStart(2, '0')}`;
+        const capitalizedPriority = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
+        const baseMessage = `Reminder: '${task.text}' is due at ${deadlineTime}. Priority: ${capitalizedPriority}`;
+
+        const notificationTimes: Date[] = [];
+
+        if (task.customNotificationTime) {
+            notificationTimes.push(new Date(task.customNotificationTime));
+        } else {
+            let defaultTime;
+            switch (task.type) {
+                case 'Appointment':
+                    defaultTime = subtractTime(deadline, 1);
+                    break;
+                case 'Meeting':
+                    defaultTime = subtractTime(deadline, 1, 30); // 1.5 hours
+                    break;
+                case 'Assignment':
+                    defaultTime = subtractTime(deadline, 0, 30); // 30 minutes
+                    break;
+                default:
+                    defaultTime = subtractTime(deadline, 0, 15); // 15 minutes default
+                    break;
+            }
+            notificationTimes.push(defaultTime);
+        }
+
+        if (task.priority === 'high') {
+            const oneDayBefore = subtractTime(deadline, 24);
+            // Add 1-day reminder only if it's in the future and not redundant
+            if (oneDayBefore > now && !notificationTimes.some(t => Math.abs(t.getTime() - oneDayBefore.getTime()) < 60000)) {
+                 notificationTimes.push(oneDayBefore);
+            }
+        }
+        
+        notificationTimes.forEach(notifyAt => {
+             if (notifyAt > now) { // Only schedule future notifications
+                schedule.push({
+                    task: task.text,
+                    notify_at: formatToLocalISO(notifyAt),
+                    message: baseMessage,
+                });
+             }
+        });
+    });
+    
+    return JSON.stringify(schedule, null, 2);
+  };
+
   const handleToggleTask = async (taskId: string) => {
     let updatedTask: Task | undefined;
     setTasks(prevTasks =>
       prevTasks.map(task => {
         if (task.id === taskId) {
-          updatedTask = { ...task, isCompleted: !task.isCompleted };
+          const isNowCompleted = !task.isCompleted;
+          updatedTask = { 
+            ...task, 
+            isCompleted: isNowCompleted,
+            completedAt: isNowCompleted ? new Date().toISOString() : undefined
+          };
           return updatedTask;
         }
         return task;
@@ -450,12 +784,18 @@ const App: React.FC = () => {
       const createdTasks: any[] = [];
       const scheduledReminders: string[] = [];
       let taskDeletedMessage = '';
+      let analysisMessage = '';
+      let updateMessage = '';
+      let scheduleMessage = '';
 
       if (functionCalls) {
         for (const func of functionCalls) {
           if (func.name === 'createTask' && func.args) {
             await handleCreateTask(func.args);
             createdTasks.push(func.args);
+          }
+          if (func.name === 'updateTask' && func.args) {
+            updateMessage = await handleUpdateTask(func.args);
           }
            if (func.name === 'scheduleReminder' && func.args) {
             const remindedTaskText = await handleScheduleReminder(func.args);
@@ -467,6 +807,17 @@ const App: React.FC = () => {
                 taskDeletedMessage = `Alright, I've removed the task: "${deletedTaskText}".`;
             } else {
                 taskDeletedMessage = `Sorry, I couldn't find that task.`;
+            }
+          }
+           if (func.name === 'analyzeProductivityPatterns') {
+              analysisMessage = await handleAnalyzeProductivityPatterns();
+          }
+          if (func.name === 'generateNotificationSchedule') {
+            const scheduleJson = await handleGenerateNotificationSchedule();
+            if (scheduleJson && JSON.parse(scheduleJson).length > 0) {
+                 scheduleMessage = `Sure, here is the generated notification schedule based on your tasks:\n\n\`\`\`json\n${scheduleJson}\n\`\`\``;
+            } else {
+                 scheduleMessage = "I couldn't find any pending tasks with future deadlines to generate a schedule for.";
             }
           }
         }
@@ -488,6 +839,18 @@ const App: React.FC = () => {
         finalConfirmationMessage = taskDeletedMessage;
       }
 
+      if (updateMessage) {
+        finalConfirmationMessage = updateMessage;
+      }
+
+      if (analysisMessage) {
+        finalConfirmationMessage = analysisMessage;
+      }
+
+      if (scheduleMessage) {
+        finalConfirmationMessage = scheduleMessage;
+      }
+
       const responseText = aiResponseText.trim();
       if (responseText) {
         await addNewMessage(responseText, Role.MODEL);
@@ -497,9 +860,17 @@ const App: React.FC = () => {
 
     } catch (e) {
       console.error("Error sending message:", e);
-      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      setError(`Sorry, something went wrong: ${errorMessage}`);
-      addNewMessage(`Sorry, something went wrong: ${errorMessage}`, Role.MODEL);
+      let friendlyErrorMessage = "Sorry, something went wrong. Please try again.";
+      const rawErrorMessage = e instanceof Error ? e.message : String(e);
+
+      if (rawErrorMessage.includes('429') || rawErrorMessage.includes('RESOURCE_EXHAUSTED')) {
+        friendlyErrorMessage = "You've exceeded your API request limit. Please [check your plan and billing details](https://ai.google.dev/gemini-api/docs/billing), or try again later.";
+      } else {
+        friendlyErrorMessage = `Sorry, something went wrong: ${rawErrorMessage.substring(0, 100)}`;
+      }
+      
+      setError(friendlyErrorMessage);
+      addNewMessage(friendlyErrorMessage, Role.MODEL);
     } finally {
       setIsLoading(false);
     }

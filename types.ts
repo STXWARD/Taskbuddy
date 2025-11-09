@@ -12,11 +12,16 @@ export interface Message {
 }
 
 export interface Task {
-  id: string;
+  id:string;
   text: string;
   isCompleted: boolean;
   dueDate?: string;
   priority: 'high' | 'medium' | 'low';
-  userName: string;
+  userName:string;
   reminders?: string[]; // To store reminder timestamps
+  createdAt: string;
+  completedAt?: string;
+  category?: string;
+  type?: 'Appointment' | 'Meeting' | 'Assignment' | 'Other';
+  customNotificationTime?: string; // RFC3339 timestamp
 }
